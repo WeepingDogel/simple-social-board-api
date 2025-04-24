@@ -1,0 +1,154 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table, Float, UniqueConstraint
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+import uuid
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    profile = relationship("UserProfile", back_populates="user", uselist=False)
+    posts = relationship("Post", back_populates="author")
+    likes = relationship("Like", back_populates="user")
+    reposts = relationship("Repost", back_populates="user")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}', username='{self.username}')>"
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    display_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    background_color = Column(String, default="#ffffff")
+    bio = Column(String(160), nullable=True)  # Twitter-style bio, limited to 160 chars
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="profile")
+
+    def __repr__(self):
+        return f"<UserProfile(user_id={self.user_id}, display_name='{self.display_name}')>"
+
+
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True)
+    content = Column(String(4000), nullable=False)  # Approximately 500 words
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    like_count = Column(Integer, default=0)
+    repost_count = Column(Integer, default=0)
+    
+    # For reposts
+    original_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
+    
+    # Relationships
+    author = relationship("User", back_populates="posts")
+    images = relationship("PostImage", back_populates="post")
+    likes = relationship("Like", back_populates="post")
+    reposts = relationship("Repost", back_populates="post")
+    original_post = relationship("Post", remote_side=[id])
+
+    def __repr__(self):
+        return f"<Post(id={self.id}, author_id={self.author_id})>"
+
+
+class PostImage(Base):
+    __tablename__ = "post_images"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    image_url = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    post = relationship("Post", back_populates="images")
+
+    def __repr__(self):
+        return f"<PostImage(id={self.id}, post_id={self.post_id})>"
+
+
+class Like(Base):
+    __tablename__ = "likes"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="likes")
+    post = relationship("Post", back_populates="likes")
+    
+    # Unique constraint to prevent multiple likes by the same user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'post_id', name='unique_user_post_like'),
+    )
+
+    def __repr__(self):
+        return f"<Like(user_id={self.user_id}, post_id={self.post_id})>"
+
+
+class Repost(Base):
+    __tablename__ = "reposts"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="reposts")
+    post = relationship("Post", back_populates="reposts")
+    
+    # Unique constraint to prevent multiple reposts by the same user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'post_id', name='unique_user_post_repost'),
+    )
+
+    def __repr__(self):
+        return f"<Repost(user_id={self.user_id}, post_id={self.post_id})>"
+
+
+class MediaFile(Base):
+    __tablename__ = "media_files"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_url = Column(String, nullable=False)
+    mime_type = Column(String, nullable=False)
+    file_size = Column(Integer, nullable=False)  # Size in bytes
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<MediaFile(id={self.id}, filename='{self.filename}')>"
+
+
+class ModerationAction(Base):
+    __tablename__ = "moderation_actions"
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String, nullable=False)  # "DELETE_POST", "BAN_USER", etc.
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    target_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
+    reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ModerationAction(id={self.id}, action_type='{self.action_type}')>"
+
+

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+*.env
+
+# Sqlite database (for development)
+*.db
+*.sqlite3
+
+# Media files
+static/media/uploads/
+
+# JWT Secret
+secret.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+
+# Docker
+.dockerignore
+
+# Logs
+logs/
+*.log
