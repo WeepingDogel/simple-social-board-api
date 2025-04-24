@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, HttpUrl, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, HttpUrl, Field, ConfigDict, UUID4
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 
 # Auth and User schemas
 class UserCreate(BaseModel):
@@ -13,11 +13,17 @@ class UserLogin(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
-    id: int
+    id: UUID4
     email: EmailStr
     username: str
     is_admin: bool
     created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class UserBasicInfo(BaseModel):
+    id: UUID4
+    username: str
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,7 +32,7 @@ class Token(BaseModel):
     token_type: str = "Bearer"
 
 class TokenData(BaseModel):
-    user_id: Optional[int] = None
+    user_id: Optional[UUID4] = None
     email: Optional[str] = None
     is_admin: Optional[bool] = False
 
@@ -44,16 +50,18 @@ class ProfileUpdate(ProfileBase):
     pass
 
 class ProfileResponse(ProfileBase):
-    id: int
-    user_id: int
+    id: UUID4
+    user_id: UUID4
     created_at: datetime
     updated_at: datetime
+    follower_count: int
+    following_count: int
     
     model_config = ConfigDict(from_attributes=True)
 
 # Post schemas
 class PostImageResponse(BaseModel):
-    id: int
+    id: UUID4
     image_url: str
     
     model_config = ConfigDict(from_attributes=True)
@@ -64,47 +72,69 @@ class PostBase(BaseModel):
 class PostCreate(PostBase):
     image_urls: Optional[List[str]] = []  # List of image URLs to attach
 
+class ReplyCreate(PostBase):
+    reply_to_post_id: UUID4
+    image_urls: Optional[List[str]] = []  # List of image URLs to attach
+
 class PostUpdate(PostBase):
     pass
 
+class PostAuthorResponse(BaseModel):
+    id: UUID4
+    username: str
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class ReplyToPostResponse(BaseModel):
+    id: UUID4
+    content: str
+    author: PostAuthorResponse
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
 class PostResponse(PostBase):
-    id: int
-    author_id: int
+    id: UUID4
+    author_id: UUID4
+    author: Optional[PostAuthorResponse] = None
     created_at: datetime
     updated_at: datetime
     like_count: int
     repost_count: int
-    original_post_id: Optional[int] = None
+    reply_count: int
+    original_post_id: Optional[UUID4] = None
+    reply_to_post_id: Optional[UUID4] = None
+    reply_to_post: Optional[ReplyToPostResponse] = None
     images: List[PostImageResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
 
 # Interaction schemas
 class LikeCreate(BaseModel):
-    post_id: int
+    post_id: UUID4
 
 class LikeResponse(BaseModel):
-    id: int
-    user_id: int
-    post_id: int
+    id: UUID4
+    user_id: UUID4
+    post_id: UUID4
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
 
 class RepostCreate(BaseModel):
-    post_id: int
+    post_id: UUID4
 
 class RepostResponse(BaseModel):
-    id: int
-    user_id: int
-    post_id: int
+    id: UUID4
+    user_id: UUID4
+    post_id: UUID4
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
 
 # Media schemas
 class MediaUploadResponse(BaseModel):
-    id: int
+    id: UUID4
     filename: str
     file_url: str
     
@@ -113,17 +143,47 @@ class MediaUploadResponse(BaseModel):
 # Admin schemas
 class ModerateAction(BaseModel):
     action_type: str  # DELETE_POST, BAN_USER, etc.
-    target_user_id: Optional[int] = None
-    target_post_id: Optional[int] = None
+    target_user_id: Optional[UUID4] = None
+    target_post_id: Optional[UUID4] = None
     reason: Optional[str] = None
 
 class ModerationActionResponse(BaseModel):
-    id: int
-    admin_id: int
+    id: UUID4
+    admin_id: UUID4
     action_type: str
-    target_user_id: Optional[int] = None
-    target_post_id: Optional[int] = None
+    target_user_id: Optional[UUID4] = None
+    target_post_id: Optional[UUID4] = None
     reason: Optional[str] = None
     created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# Follower schemas
+class FollowCreate(BaseModel):
+    user_id: UUID4  # ID of the user to follow
+
+class FollowResponse(BaseModel):
+    id: UUID4
+    follower_id: UUID4
+    following_id: UUID4
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class FollowerUserResponse(BaseModel):
+    id: UUID4
+    username: str
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class FollowListResponse(BaseModel):
+    items: List[FollowerUserResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
     
     model_config = ConfigDict(from_attributes=True)

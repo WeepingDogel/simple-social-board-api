@@ -11,6 +11,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/social_board
       - SECRET_KEY=${SECRET_KEY:-your_secret_key}
       - MEDIA_DIR=static/media
+      - PYTHONPATH=/app
     volumes:
       - ./static:/app/static
     depends_on:
@@ -32,6 +33,7 @@ services:
       - POSTGRES_DB=social_board
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     ports:
       - "5432:5432"
     restart: always

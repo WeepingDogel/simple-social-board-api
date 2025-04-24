@@ -5,37 +5,70 @@ import os
 import sys
 import time
 import logging
+import uuid
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
+from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database URL can be set as an environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./social_board.db")
+# Get database URL from environment or use default
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database.db")
 
 logger.info(f"Connecting to database: {DATABASE_URL}")
 
-# Create engine with proper connection parameters
-if DATABASE_URL.startswith("postgresql"):
-    # For PostgreSQL, enable appropriate connection settings
+# Add config for SQLite (using file) or PostgreSQL (using environment variables)
+if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,  # Test connections before using them
-        pool_recycle=300,    # Recycle connections after 5 minutes
-        echo=True            # Log SQL queries during development
+        DATABASE_URL, connect_args={"check_same_thread": False}
     )
 else:
-    # SQLite or other database
-    engine = create_engine(
-        DATABASE_URL, 
-        connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-    )
+    # PostgreSQL connection
+    engine = create_engine(DATABASE_URL)
 
-# Create session maker
+# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for models
+# Base class for all models
 Base = declarative_base()
+
+# Custom UUID type that works with both SQLite and PostgreSQL
+class UUID(TypeDecorator):
+    """Platform-independent UUID type.
+    
+    Uses PostgreSQL's UUID type when using PostgreSQL, 
+    uses CHAR for SQLite, storing as string representation.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PostgresUUID())
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return value
+        else:
+            if isinstance(value, uuid.UUID):
+                return str(value)
+            return value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if not isinstance(value, uuid.UUID):
+            try:
+                value = uuid.UUID(value)
+            except (TypeError, ValueError):
+                return None
+        return value
 
 def wait_for_db(max_retries=10, retry_interval=2):
     """Wait for database to be available"""
@@ -59,44 +92,52 @@ def wait_for_db(max_retries=10, retry_interval=2):
     
     return False
 
-# Create tables function
 def init_db():
-    """Initialize the database - create tables if they don't exist"""
-    # First, wait for database to be available
-    if not wait_for_db():
-        logger.error("Database is not available, exiting")
-        sys.exit(1)
+    """Initialize the database - create tables and enable UUID support for PostgreSQL."""
+    if DATABASE_URL.startswith("postgresql"):
+        # Create extension if it doesn't exist - for UUID support in PostgreSQL
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
+            conn.commit()
     
-    try:
-        # Import models here to avoid circular imports
-        from ..models.model import User, UserProfile, Post, PostImage, Like, Repost, MediaFile, ModerationAction
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    
+    # Apply database migrations
+    apply_migrations()
+
+def apply_migrations():
+    """Apply any necessary database migrations."""
+    logger.info("Checking and applying database migrations...")
+    
+    inspector = inspect(engine)
+    
+    # Add follower_count and following_count columns to user_profiles if they don't exist
+    if "user_profiles" in inspector.get_table_names():
+        columns = [col["name"] for col in inspector.get_columns("user_profiles")]
         
-        # Check if tables exist
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
-        logger.info(f"Existing tables: {tables}")
-        
-        if "users" not in tables:
-            logger.info("Creating database tables...")
-            Base.metadata.create_all(bind=engine)
-            logger.info("Database tables created successfully")
+        with engine.begin() as conn:
+            # Add follower_count if it doesn't exist
+            if "follower_count" not in columns:
+                logger.info("Adding follower_count column to user_profiles")
+                if DATABASE_URL.startswith("postgresql"):
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN follower_count INTEGER DEFAULT 0;"))
+                else:
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN follower_count INTEGER DEFAULT 0;"))
             
-            # Verify tables were created
-            new_tables = inspect(engine).get_table_names()
-            logger.info(f"Tables after creation: {new_tables}")
-            
-            if "users" not in new_tables:
-                logger.error("Failed to create tables properly")
-                sys.exit(1)
-        else:
-            logger.info("Tables already exist, skipping creation")
-            
-    except Exception as e:
-        logger.error(f"Error creating database tables: {e}")
-        sys.exit(1)
+            # Add following_count if it doesn't exist
+            if "following_count" not in columns:
+                logger.info("Adding following_count column to user_profiles")
+                if DATABASE_URL.startswith("postgresql"):
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN following_count INTEGER DEFAULT 0;"))
+                else:
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN following_count INTEGER DEFAULT 0;"))
+    
+    logger.info("Database migrations completed")
 
 # Dependency to get DB session
 def get_db():
+    """Dependency to get a database session."""
     db = SessionLocal()
     try:
         yield db

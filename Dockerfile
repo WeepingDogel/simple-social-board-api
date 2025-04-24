@@ -15,19 +15,25 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
-COPY . .
+# Copy the application source
+COPY ./src /app/src
+COPY ./static /app/static
 
-# Create static directory for media files
-RUN mkdir -p static/media
+# Create static directory for media files if it doesn't exist
+RUN mkdir -p /app/static/media
 
-# Make scripts executable
-COPY entrypoint.sh /app/entrypoint.sh
+# Make entrypoint script executable
+COPY src/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
-RUN chmod +x /app/src/init_db.py
+
+# Set proper environment variables
+ENV PYTHONPATH=/app
 
 # Expose the port
 EXPOSE 8000
 
+# Set entrypoint to our custom script
+ENTRYPOINT ["/app/entrypoint.sh"]
+
 # Run the application
-CMD ["/app/entrypoint.sh"] 
+CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"] 

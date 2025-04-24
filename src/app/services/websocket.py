@@ -3,12 +3,15 @@ from typing import Dict, List, Any
 import json
 import asyncio
 from datetime import datetime
+import uuid
 
 class DateTimeEncoder(json.JSONEncoder):
-    """JSON encoder that handles datetime objects."""
+    """JSON encoder that handles datetime and UUID objects."""
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
         return super().default(obj)
 
 class ConnectionManager:
@@ -17,11 +20,11 @@ class ConnectionManager:
     """
     def __init__(self):
         # Active connections mapped by user_id
-        self.active_connections: Dict[int, List[WebSocket]] = {}
+        self.active_connections: Dict[str, List[WebSocket]] = {}
         # All connections for broadcasting
         self.broadcast_connections: List[WebSocket] = []
     
-    async def connect(self, websocket: WebSocket, user_id: int = None):
+    async def connect(self, websocket: WebSocket, user_id: uuid.UUID = None):
         """Connect a WebSocket client"""
         await websocket.accept()
         
@@ -30,32 +33,36 @@ class ConnectionManager:
         
         # If user is authenticated, add to user-specific list
         if user_id:
-            if user_id not in self.active_connections:
-                self.active_connections[user_id] = []
-            self.active_connections[user_id].append(websocket)
+            user_id_str = str(user_id)
+            if user_id_str not in self.active_connections:
+                self.active_connections[user_id_str] = []
+            self.active_connections[user_id_str].append(websocket)
     
-    def disconnect(self, websocket: WebSocket, user_id: int = None):
+    def disconnect(self, websocket: WebSocket, user_id: uuid.UUID = None):
         """Disconnect a WebSocket client"""
         # Remove from broadcast list
         if websocket in self.broadcast_connections:
             self.broadcast_connections.remove(websocket)
         
         # If user was authenticated, remove from user-specific list
-        if user_id and user_id in self.active_connections:
-            if websocket in self.active_connections[user_id]:
-                self.active_connections[user_id].remove(websocket)
-            
-            # Clean up empty lists
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
+        if user_id:
+            user_id_str = str(user_id)
+            if user_id_str in self.active_connections:
+                if websocket in self.active_connections[user_id_str]:
+                    self.active_connections[user_id_str].remove(websocket)
+                
+                # Clean up empty lists
+                if not self.active_connections[user_id_str]:
+                    del self.active_connections[user_id_str]
     
-    async def send_personal_message(self, message: Any, user_id: int):
+    async def send_personal_message(self, message: Any, user_id: uuid.UUID):
         """Send a message to a specific user's connections"""
-        if user_id in self.active_connections:
+        user_id_str = str(user_id)
+        if user_id_str in self.active_connections:
             message_json = message if isinstance(message, str) else json.dumps(message, cls=DateTimeEncoder)
             
             # Send to all connections for this user
-            for connection in self.active_connections[user_id]:
+            for connection in self.active_connections[user_id_str]:
                 try:
                     await connection.send_text(message_json)
                 except Exception:

@@ -5,6 +5,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import os
+import uuid
 
 from ..schemas.schema import TokenData
 from ..models.model import User
@@ -48,6 +49,32 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# Decode and validate token without database dependency
+def get_token_data(token: str) -> TokenData:
+    """
+    Decodes and validates a JWT token, returning TokenData without database access.
+    Used for WebSocket connections where dependencies can't be used.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        is_admin = payload.get("is_admin", False)
+        
+        if user_id is None:
+            return None
+            
+        if isinstance(user_id, str):
+            try:
+                # Convert string to UUID
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return None
+                
+        return TokenData(user_id=user_id, email=email, is_admin=is_admin)
+    except JWTError:
+        return None
+
 # Get current user from token
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -58,10 +85,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("sub")
+        user_id_str = payload.get("sub")
         email: str = payload.get("email")
         
-        if user_id is None or email is None:
+        if user_id_str is None or email is None:
+            raise credentials_exception
+        
+        try:
+            # Convert string to UUID
+            user_id = uuid.UUID(user_id_str)
+        except ValueError:
             raise credentials_exception
             
         token_data = TokenData(user_id=user_id, email=email)

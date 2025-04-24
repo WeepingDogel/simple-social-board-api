@@ -16,14 +16,17 @@ from app.services.database import engine, Base, wait_for_db
 from app.models.model import User, UserProfile, Post, PostImage, Like, Repost, MediaFile, ModerationAction
 
 def create_tables_manually():
-    """Create tables using direct SQL commands"""
+    """Create tables using direct SQL commands with UUID support"""
     logger.info("Creating tables using direct SQL...")
     
     with engine.connect() as connection:
+        # First, create the UUID extension if needed
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
+        
         # Create users table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             email VARCHAR NOT NULL UNIQUE,
             username VARCHAR NOT NULL UNIQUE,
             hashed_password VARCHAR NOT NULL,
@@ -37,8 +40,8 @@ def create_tables_manually():
         # Create user_profiles table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS user_profiles (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER UNIQUE REFERENCES users(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID UNIQUE REFERENCES users(id),
             display_name VARCHAR,
             avatar_url VARCHAR,
             background_color VARCHAR DEFAULT '#ffffff',
@@ -51,22 +54,25 @@ def create_tables_manually():
         # Create posts table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS posts (
-            id SERIAL PRIMARY KEY,
-            content VARCHAR(4000) NOT NULL,
-            author_id INTEGER NOT NULL REFERENCES users(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            content TEXT NOT NULL,
+            author_id UUID NOT NULL REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             like_count INTEGER DEFAULT 0,
             repost_count INTEGER DEFAULT 0,
-            original_post_id INTEGER REFERENCES posts(id)
+            reply_count INTEGER DEFAULT 0,
+            original_post_id UUID REFERENCES posts(id),
+            reply_to_post_id UUID REFERENCES posts(id),
+            reply_author_id UUID REFERENCES users(id)
         )
         """))
         
         # Create post_images table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS post_images (
-            id SERIAL PRIMARY KEY,
-            post_id INTEGER NOT NULL REFERENCES posts(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            post_id UUID NOT NULL REFERENCES posts(id),
             image_url VARCHAR NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -75,9 +81,9 @@ def create_tables_manually():
         # Create likes table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS likes (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            post_id INTEGER NOT NULL REFERENCES posts(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL REFERENCES users(id),
+            post_id UUID NOT NULL REFERENCES posts(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT unique_user_post_like UNIQUE (user_id, post_id)
         )
@@ -86,9 +92,9 @@ def create_tables_manually():
         # Create reposts table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS reposts (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            post_id INTEGER NOT NULL REFERENCES posts(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL REFERENCES users(id),
+            post_id UUID NOT NULL REFERENCES posts(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT unique_user_post_repost UNIQUE (user_id, post_id)
         )
@@ -97,13 +103,13 @@ def create_tables_manually():
         # Create media_files table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS media_files (
-            id SERIAL PRIMARY KEY,
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             filename VARCHAR NOT NULL,
             file_path VARCHAR NOT NULL,
             file_url VARCHAR NOT NULL,
             mime_type VARCHAR NOT NULL,
             file_size INTEGER NOT NULL,
-            uploader_id INTEGER NOT NULL REFERENCES users(id),
+            uploader_id UUID NOT NULL REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """))
@@ -111,11 +117,11 @@ def create_tables_manually():
         # Create moderation_actions table
         connection.execute(text("""
         CREATE TABLE IF NOT EXISTS moderation_actions (
-            id SERIAL PRIMARY KEY,
-            admin_id INTEGER NOT NULL REFERENCES users(id),
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            admin_id UUID NOT NULL REFERENCES users(id),
             action_type VARCHAR NOT NULL,
-            target_user_id INTEGER REFERENCES users(id),
-            target_post_id INTEGER REFERENCES posts(id),
+            target_user_id UUID REFERENCES users(id),
+            target_post_id UUID REFERENCES posts(id),
             reason VARCHAR,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -133,6 +139,11 @@ def initialize_database():
         sys.exit(1)
         
     try:
+        # Create UUID extension first if using PostgreSQL
+        with engine.connect() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
+            connection.commit()
+        
         # Try SQLAlchemy's way first
         logger.info("Creating all database tables with SQLAlchemy...")
         Base.metadata.create_all(bind=engine)

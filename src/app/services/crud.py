@@ -1,11 +1,12 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 import uuid
+from sqlalchemy import desc
 
 from ..models.model import User, UserProfile, Post, PostImage, Like, Repost, MediaFile, ModerationAction
-from ..schemas.schema import UserCreate, ProfileCreate, PostCreate, LikeCreate, RepostCreate
+from ..schemas.schema import UserCreate, ProfileCreate, PostCreate, ReplyCreate, LikeCreate, RepostCreate
 from .auth import get_password_hash
 
 # User CRUD operations
@@ -46,13 +47,24 @@ def create_user(db: Session, user_create: UserCreate):
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def get_user_by_id(db: Session, user_id: int):
+def get_user_by_id(db: Session, user_id: Union[str, uuid.UUID]):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
     return db.query(User).filter(User.id == user_id).first()
 
 def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(User).offset(skip).limit(limit).all()
 
-def update_user(db: Session, user_id: int, is_active: bool = None, is_admin: bool = None):
+def update_user(db: Session, user_id: Union[str, uuid.UUID], is_active: bool = None, is_admin: bool = None):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -68,13 +80,25 @@ def update_user(db: Session, user_id: int, is_active: bool = None, is_admin: boo
     return db_user
 
 # Profile CRUD operations
-def get_profile(db: Session, user_id: int):
+def get_profile(db: Session, user_id: Union[str, uuid.UUID]):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile
 
-def update_profile(db: Session, user_id: int, profile_data: dict):
+def update_profile(db: Session, user_id: Union[str, uuid.UUID], profile_data: dict):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
@@ -89,7 +113,13 @@ def update_profile(db: Session, user_id: int, profile_data: dict):
     return profile
 
 # Post CRUD operations
-def create_post(db: Session, user_id: int, post_create: PostCreate):
+def create_post(db: Session, user_id: Union[str, uuid.UUID], post_create: PostCreate):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     # Create new post
     db_post = Post(
         content=post_create.content,
@@ -117,21 +147,172 @@ def create_post(db: Session, user_id: int, post_create: PostCreate):
     
     return db_post
 
-def get_post(db: Session, post_id: int):
+# Create a reply to a post
+def create_reply(db: Session, user_id: Union[str, uuid.UUID], reply_create: ReplyCreate):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
+    # Check if the post to reply to exists
+    reply_to_post_id = reply_create.reply_to_post_id
+    if isinstance(reply_to_post_id, str):
+        try:
+            reply_to_post_id = uuid.UUID(reply_to_post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
+    reply_to_post = db.query(Post).filter(Post.id == reply_to_post_id).first()
+    if not reply_to_post:
+        raise HTTPException(status_code=404, detail="Post to reply to not found")
+    
+    # Create new reply post
+    db_reply = Post(
+        content=reply_create.content,
+        author_id=user_id,
+        reply_to_post_id=reply_to_post.id,
+        reply_author_id=reply_to_post.author_id
+    )
+    
+    db.add(db_reply)
+    db.commit()
+    db.refresh(db_reply)
+    
+    # Add images if provided
+    if reply_create.image_urls:
+        # Limit to max 9 images
+        image_urls = reply_create.image_urls[:9]
+        
+        for image_url in image_urls:
+            db_image = PostImage(
+                post_id=db_reply.id,
+                image_url=image_url
+            )
+            db.add(db_image)
+    
+    # Increment reply count on the original post
+    reply_to_post.reply_count += 1
+    
+    db.commit()
+    db.refresh(db_reply)
+    
+    return db_reply
+
+def get_post(db: Session, post_id: Union[str, uuid.UUID]):
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
 
+def get_post_with_author(db: Session, post_id: Union[str, uuid.UUID]):
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Load author info
+    author = db.query(User).filter(User.id == post.author_id).first()
+    post.author = author
+    
+    # If it's a reply, load the replied-to post
+    if post.reply_to_post_id:
+        reply_to_post = db.query(Post).filter(Post.id == post.reply_to_post_id).first()
+        if reply_to_post:
+            reply_to_post_author = db.query(User).filter(User.id == reply_to_post.author_id).first()
+            reply_to_post.author = reply_to_post_author
+            post.reply_to_post = reply_to_post
+    
+    return post
+
 def get_feed(db: Session, skip: int = 0, limit: int = 20):
     # Simple feed implementation - just get latest posts
     # In a production app, this would be more complex with personalization
-    return db.query(Post).order_by(Post.created_at.desc()).offset(skip).limit(limit).all()
+    posts = db.query(Post).order_by(desc(Post.created_at)).offset(skip).limit(limit).all()
+    
+    # Load authors for all posts
+    for post in posts:
+        post.author = db.query(User).filter(User.id == post.author_id).first()
+        
+        # Load reply info if it's a reply
+        if post.reply_to_post_id:
+            reply_to = db.query(Post).filter(Post.id == post.reply_to_post_id).first()
+            if reply_to:
+                reply_to.author = db.query(User).filter(User.id == reply_to.author_id).first()
+                post.reply_to_post = reply_to
+    
+    return posts
 
-def get_user_posts(db: Session, user_id: int, skip: int = 0, limit: int = 20):
-    return db.query(Post).filter(Post.author_id == user_id).order_by(Post.created_at.desc()).offset(skip).limit(limit).all()
+def get_user_posts(db: Session, user_id: Union[str, uuid.UUID], skip: int = 0, limit: int = 20):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
+    posts = db.query(Post).filter(Post.author_id == user_id).order_by(desc(Post.created_at)).offset(skip).limit(limit).all()
+    
+    # Load author for all posts
+    user = db.query(User).filter(User.id == user_id).first()
+    for post in posts:
+        post.author = user
+        
+        # Load reply info if it's a reply
+        if post.reply_to_post_id:
+            reply_to = db.query(Post).filter(Post.id == post.reply_to_post_id).first()
+            if reply_to:
+                reply_to.author = db.query(User).filter(User.id == reply_to.author_id).first()
+                post.reply_to_post = reply_to
+    
+    return posts
 
-def delete_post(db: Session, post_id: int, user_id: int, is_admin: bool = False):
+def get_post_replies(db: Session, post_id: Union[str, uuid.UUID], skip: int = 0, limit: int = 20):
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
+    # Check if post exists
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Get replies
+    replies = db.query(Post).filter(Post.reply_to_post_id == post_id).order_by(desc(Post.created_at)).offset(skip).limit(limit).all()
+    
+    # Load authors for all replies
+    for reply in replies:
+        reply.author = db.query(User).filter(User.id == reply.author_id).first()
+        reply.reply_to_post = post
+        post.author = db.query(User).filter(User.id == post.author_id).first()
+    
+    return replies
+
+def delete_post(db: Session, post_id: Union[str, uuid.UUID], user_id: Union[str, uuid.UUID], is_admin: bool = False):
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+            
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -140,12 +321,24 @@ def delete_post(db: Session, post_id: int, user_id: int, is_admin: bool = False)
     if post.author_id != user_id and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this post")
     
+    # If this is a reply, decrement reply count on parent post
+    if post.reply_to_post_id:
+        parent_post = db.query(Post).filter(Post.id == post.reply_to_post_id).first()
+        if parent_post:
+            parent_post.reply_count = max(0, parent_post.reply_count - 1)
+    
     # Delete images associated with post
     db.query(PostImage).filter(PostImage.post_id == post_id).delete()
     
     # Delete likes and reposts
     db.query(Like).filter(Like.post_id == post_id).delete()
     db.query(Repost).filter(Repost.post_id == post_id).delete()
+    
+    # Delete replies to this post
+    replies = db.query(Post).filter(Post.reply_to_post_id == post_id).all()
+    for reply in replies:
+        # Recursively delete replies (without checking auth since parent is being deleted)
+        delete_post(db, reply.id, user_id, is_admin=True)
     
     # Delete post
     db.delete(post)
@@ -154,7 +347,19 @@ def delete_post(db: Session, post_id: int, user_id: int, is_admin: bool = False)
     return {"message": "Post deleted successfully"}
 
 # Interaction CRUD operations
-def create_like(db: Session, user_id: int, post_id: int):
+def create_like(db: Session, user_id: Union[str, uuid.UUID], post_id: Union[str, uuid.UUID]):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+            
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
     # Check if post exists
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
@@ -177,7 +382,19 @@ def create_like(db: Session, user_id: int, post_id: int):
     
     return db_like
 
-def delete_like(db: Session, user_id: int, post_id: int):
+def delete_like(db: Session, user_id: Union[str, uuid.UUID], post_id: Union[str, uuid.UUID]):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+            
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
     # Find like
     like = db.query(Like).filter(Like.user_id == user_id, Like.post_id == post_id).first()
     if not like:
@@ -194,7 +411,19 @@ def delete_like(db: Session, user_id: int, post_id: int):
     
     return {"message": "Like removed successfully"}
 
-def create_repost(db: Session, user_id: int, post_id: int):
+def create_repost(db: Session, user_id: Union[str, uuid.UUID], post_id: Union[str, uuid.UUID]):
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+            
+    if isinstance(post_id, str):
+        try:
+            post_id = uuid.UUID(post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid post ID format")
+    
     # Check if post exists
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
@@ -227,12 +456,18 @@ def create_repost(db: Session, user_id: int, post_id: int):
 
 # Media CRUD operations
 def create_media_file(db: Session, 
-                     user_id: int, 
+                     user_id: Union[str, uuid.UUID], 
                      filename: str, 
                      file_path: str, 
                      file_url: str, 
                      mime_type: str, 
                      file_size: int):
+    
+    if isinstance(user_id, str):
+        try:
+            user_id = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
     
     db_media = MediaFile(
         filename=filename,
@@ -251,11 +486,29 @@ def create_media_file(db: Session,
 
 # Admin operations
 def create_moderation_action(db: Session, 
-                            admin_id: int, 
+                            admin_id: Union[str, uuid.UUID], 
                             action_type: str, 
-                            target_user_id: Optional[int] = None,
-                            target_post_id: Optional[int] = None,
+                            target_user_id: Optional[Union[str, uuid.UUID]] = None,
+                            target_post_id: Optional[Union[str, uuid.UUID]] = None,
                             reason: Optional[str] = None):
+    
+    if isinstance(admin_id, str):
+        try:
+            admin_id = uuid.UUID(admin_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid admin ID format")
+    
+    if target_user_id and isinstance(target_user_id, str):
+        try:
+            target_user_id = uuid.UUID(target_user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid target user ID format")
+    
+    if target_post_id and isinstance(target_post_id, str):
+        try:
+            target_post_id = uuid.UUID(target_post_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid target post ID format")
     
     db_action = ModerationAction(
         admin_id=admin_id,
@@ -272,4 +525,4 @@ def create_moderation_action(db: Session,
     return db_action
 
 def get_moderation_actions(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(ModerationAction).order_by(ModerationAction.created_at.desc()).offset(skip).limit(limit).all()
+    return db.query(ModerationAction).order_by(desc(ModerationAction.created_at)).offset(skip).limit(limit).all()
