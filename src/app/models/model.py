@@ -151,7 +151,7 @@ class MediaFile(Base):
     file_size = Column(Integer, nullable=False)  # Size in bytes
     uploader_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     def __repr__(self):
         return f"<MediaFile(id={self.id}, filename='{self.filename}')>"
 

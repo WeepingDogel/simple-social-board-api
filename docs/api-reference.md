@@ -30,6 +30,17 @@ Creates a new user account.
 }
 ```
 
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "username": "username",
+    "password": "password123"
+  }'
+```
+
 **Responses:**
 
 | Status | Description |
@@ -64,6 +75,13 @@ Authenticates a user and returns an access token.
 }
 ```
 
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/auth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=password123"
+```
+
 **Responses:**
 
 | Status | Description |
@@ -91,6 +109,11 @@ Retrieves a user profile by ID.
 
 **Path Parameters:**
 - `user_id`: User ID (UUID)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/profiles/123e4567-e89b-12d3-a456-426614174000"
+```
 
 **Responses:**
 
@@ -135,6 +158,19 @@ Updates the current user's profile.
 }
 ```
 
+**Curl Example:**
+```bash
+curl -X PUT "http://localhost:8000/api/profiles/me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "display_name": "Updated Name",
+    "avatar_url": "/static/media/avatars/user123_new.jpg",
+    "background_color": "#e0e0e0",
+    "bio": "Updated biography text"
+  }'
+```
+
 **Responses:**
 
 | Status | Description |
@@ -164,14 +200,19 @@ Updates the current user's profile.
 ### Get Posts
 
 ```
-GET /api/posts
+GET /api/posts/feed
 ```
 
 Retrieves a paginated list of posts.
 
 **Query Parameters:**
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 10)
+- `skip`: Number of posts to skip (default: 0)
+- `limit`: Items per page (default: 20)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/posts/feed?skip=0&limit=10"
+```
 
 **Responses:**
 
@@ -181,35 +222,29 @@ Retrieves a paginated list of posts.
 
 **Example Response (200):**
 ```json
-{
-  "items": [
-    {
+[
+  {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "content": "This is a post content",
+    "author_id": "123e4567-e89b-12d3-a456-426614174000",
+    "author": {
       "id": "123e4567-e89b-12d3-a456-426614174000",
-      "content": "This is a post content",
-      "author_id": "123e4567-e89b-12d3-a456-426614174000",
-      "author": {
-        "id": "123e4567-e89b-12d3-a456-426614174000",
-        "username": "username"
-      },
-      "created_at": "2023-01-02T15:30:00Z",
-      "updated_at": "2023-01-02T15:30:00Z",
-      "like_count": 5,
-      "repost_count": 2,
-      "reply_count": 3,
-      "images": [
-        {
-          "id": "123e4567-e89b-12d3-a456-426614174001",
-          "image_url": "/static/media/posts/image1.jpg"
-        }
-      ]
+      "username": "username"
     },
-    // More posts...
-  ],
-  "total": 42,
-  "page": 1,
-  "limit": 10,
-  "pages": 5
-}
+    "created_at": "2023-01-02T15:30:00Z",
+    "updated_at": "2023-01-02T15:30:00Z",
+    "like_count": 5,
+    "repost_count": 2,
+    "reply_count": 3,
+    "images": [
+      {
+        "id": "123e4567-e89b-12d3-a456-426614174001",
+        "image_url": "/static/media/posts/image1.jpg"
+      }
+    ]
+  },
+  // More posts...
+]
 ```
 
 ### Create Post
@@ -228,6 +263,17 @@ Creates a new post.
   "content": "This is my new post!",
   "image_urls": ["/static/media/uploads/image1.jpg"]
 }
+```
+
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/posts" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "This is my new post!",
+    "image_urls": ["/static/media/uploads/image1.jpg"]
+  }'
 ```
 
 **Responses:**
@@ -273,6 +319,11 @@ Retrieves a specific post by ID.
 **Path Parameters:**
 - `post_id`: Post ID (UUID)
 
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/posts/123e4567-e89b-12d3-a456-426614174000"
+```
+
 **Responses:**
 
 | Status | Description |
@@ -316,6 +367,12 @@ Likes a post.
 
 **Path Parameters:**
 - `post_id`: Post ID (UUID)
+
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/posts/123e4567-e89b-12d3-a456-426614174000/like" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
 
 **Responses:**
 
@@ -367,6 +424,242 @@ Reposts a post.
   "created_at": "2023-01-02T15:30:00Z"
 }
 ```
+
+### Unlike Post
+
+```
+DELETE /api/posts/{post_id}/like
+```
+
+Unlikes a post.
+
+**Authentication:** Bearer token required
+
+**Path Parameters:**
+- `post_id`: Post ID (UUID)
+
+**Curl Example:**
+```bash
+curl -X DELETE "http://localhost:8000/api/posts/123e4567-e89b-12d3-a456-426614174000/like" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Post unliked successfully |
+| 401 | Unauthorized, token missing or invalid |
+| 404 | Post not found or post not liked by user |
+
+**Example Response (200):**
+```json
+{
+  "detail": "Post unliked successfully"
+}
+```
+
+### Create Post With Images
+
+```
+POST /api/posts/with-images
+```
+
+Creates a new post with uploaded images.
+
+**Authentication:** Bearer token required
+
+**Request Body:**
+- Form data with:
+  - `content`: The text content of the post (string, max 4000 characters)
+  - `files`: One or more image files to attach to the post
+
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/posts/with-images" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "content=This is my new post with an image!" \
+  -F "files=@/path/to/local/image.jpg"
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 201 | Post created successfully with images |
+| 401 | Unauthorized, token missing or invalid |
+| 400 | Invalid request body or files |
+| 413 | Files too large |
+
+**Example Response (201):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "content": "This is my new post with images!",
+  "author_id": "123e4567-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "username": "username"
+  },
+  "created_at": "2023-01-02T15:30:00Z",
+  "updated_at": "2023-01-02T15:30:00Z",
+  "like_count": 0,
+  "repost_count": 0,
+  "reply_count": 0,
+  "images": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174001",
+      "image_url": "/static/media/uploads/image1.jpg"
+    }
+  ]
+}
+```
+
+### Create Post Reply
+
+```
+POST /api/posts/reply
+```
+
+Creates a reply to an existing post.
+
+**Authentication:** Bearer token required
+
+**Request Body:**
+```json
+{
+  "content": "This is my reply to your post!",
+  "reply_to_post_id": "123e4567-e89b-12d3-a456-426614174000",
+  "image_urls": []
+}
+```
+
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/posts/reply" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "This is my reply to your post!",
+    "reply_to_post_id": "123e4567-e89b-12d3-a456-426614174000",
+    "image_urls": []
+  }'
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 201 | Reply created successfully |
+| 401 | Unauthorized, token missing or invalid |
+| 400 | Invalid request body |
+| 404 | Post to reply to not found |
+
+**Example Response (201):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174001",
+  "content": "This is my reply to your post!",
+  "author_id": "123e4567-e89b-12d3-a456-426614174002",
+  "author": {
+    "id": "123e4567-e89b-12d3-a456-426614174002",
+    "username": "replier"
+  },
+  "created_at": "2023-01-02T16:30:00Z",
+  "updated_at": "2023-01-02T16:30:00Z",
+  "like_count": 0,
+  "repost_count": 0,
+  "reply_count": 0,
+  "reply_to_post_id": "123e4567-e89b-12d3-a456-426614174000",
+  "reply_to_post": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "content": "Original post content",
+    "author": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "username": "originalauthor"
+    },
+    "created_at": "2023-01-02T15:30:00Z"
+  },
+  "images": []
+}
+```
+
+### Get Post Replies
+
+```
+GET /api/posts/{post_id}/replies
+```
+
+Retrieves a list of replies to a specific post.
+
+**Path Parameters:**
+- `post_id`: Post ID (UUID)
+
+**Query Parameters:**
+- `skip`: Number of replies to skip (default: 0)
+- `limit`: Items per page (default: 20)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/posts/123e4567-e89b-12d3-a456-426614174000/replies?skip=0&limit=10"
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Post replies retrieved successfully |
+| 404 | Post not found |
+
+**Example Response (200):**
+```json
+[
+  {
+    "id": "123e4567-e89b-12d3-a456-426614174001",
+    "content": "This is a reply to the post",
+    "author_id": "123e4567-e89b-12d3-a456-426614174002",
+    "author": {
+      "id": "123e4567-e89b-12d3-a456-426614174002",
+      "username": "replier"
+    },
+    "created_at": "2023-01-02T16:30:00Z",
+    "updated_at": "2023-01-02T16:30:00Z",
+    "like_count": 1,
+    "repost_count": 0,
+    "reply_count": 0,
+    "reply_to_post_id": "123e4567-e89b-12d3-a456-426614174000",
+    "images": []
+  },
+  // More replies...
+]
+```
+
+### Get Posts by User
+
+```
+GET /api/posts/user/{user_id}
+```
+
+Retrieves posts created by a specific user.
+
+**Path Parameters:**
+- `user_id`: User ID (UUID)
+
+**Query Parameters:**
+- `skip`: Number of posts to skip (default: 0)
+- `limit`: Items per page (default: 20)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/posts/user/123e4567-e89b-12d3-a456-426614174000?skip=0&limit=10"
+```
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 200 | Posts retrieved successfully |
+| 404 | User not found |
 
 ## Media
 
@@ -420,6 +713,16 @@ Follow a user by providing their user ID.
 }
 ```
 
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/follow" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
 **Responses:**
 
 | Status | Description |
@@ -453,6 +756,12 @@ Unfollow a user by their user ID.
 **Path Parameters:**
 - `user_id`: User ID to unfollow (UUID)
 
+**Curl Example:**
+```bash
+curl -X DELETE "http://localhost:8000/api/follow/123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
 **Responses:**
 
 | Status | Description |
@@ -475,6 +784,11 @@ Get a list of users who follow the specified user.
 **Query Parameters:**
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 10, max: 100)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/users/123e4567-e89b-12d3-a456-426614174000/followers?page=1&limit=10"
+```
 
 **Responses:**
 
@@ -517,6 +831,11 @@ Get a list of users followed by the specified user.
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 10, max: 100)
 
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/users/123e4567-e89b-12d3-a456-426614174000/following?page=1&limit=10"
+```
+
 **Responses:**
 
 | Status | Description |
@@ -555,6 +874,11 @@ Check if a user is following another user.
 - `user_id`: User ID to check (UUID)
 - `target_id`: Target user ID (UUID)
 
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/users/123e4567-e89b-12d3-a456-426614174000/is-following/123e4567-e89b-12d3-a456-426614174001"
+```
+
 **Responses:**
 
 | Status | Description |
@@ -584,6 +908,12 @@ Lists all users (admin only).
 **Query Parameters:**
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 10)
+
+**Curl Example:**
+```bash
+curl -X GET "http://localhost:8000/api/admin/users?page=1&limit=10" \
+  -H "Authorization: Bearer YOUR_ADMIN_ACCESS_TOKEN"
+```
 
 **Responses:**
 
@@ -631,6 +961,18 @@ Takes moderation action on content or users.
   "target_post_id": "123e4567-e89b-12d3-a456-426614174000",
   "reason": "Violation of community guidelines"
 }
+```
+
+**Curl Example:**
+```bash
+curl -X POST "http://localhost:8000/api/admin/moderate" \
+  -H "Authorization: Bearer YOUR_ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action_type": "DELETE_POST",
+    "target_post_id": "123e4567-e89b-12d3-a456-426614174000",
+    "reason": "Violation of community guidelines"
+  }'
 ```
 
 **Responses:**
